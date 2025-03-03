@@ -16,7 +16,7 @@ import (
 
 func UpdateFeeds() {
 	var (
-		tick = time.Tick(time.Duration(globals.RssUrls.ReFresh) * time.Minute)
+		tick = time.Tick(time.Duration(globals.RssUrls.ReFresh) * time.Second)
 	)
 	for {
 		formattedTime := time.Now().Format("2006-01-02 15:04:05")
@@ -91,14 +91,14 @@ func GetFeeds() []models.Feed {
 func WatchConfigFileChanges(filePath string) {
 	// 创建一个新的监控器
 	watcher, err := fsnotify.NewWatcher()
-	if err != nil {
+	if (err != nil) {
 		log.Fatal(err)
 	}
 	defer watcher.Close()
 
 	// 添加要监控的文件
 	err = watcher.Add(filePath)
-	if err != nil {
+	if (err != nil) {
 		log.Fatal(err)
 	}
 
