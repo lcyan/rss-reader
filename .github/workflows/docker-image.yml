@@ -11,8 +11,8 @@ env:
   DOCKERHUB_PASSWORD : ${{ secrets.DOCKERHUB_PASSWORD }}
   GHCR_USERNAME: ${{ github.repository_owner }}
   GHCR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-  DOCKER_IMG_NAME: "zai7lou/rss-reader"
-  GHC_IMG_NAME: "ghcr.io/raywangqvq/rss-reader"
+  DOCKER_IMG_NAME: "lcyan/rss-reader"
+  GHC_IMG_NAME: "ghcr.io/lcyan/rss-reader"
   AUTO_WITH_LATEST_TAG: true
 
 jobs:
