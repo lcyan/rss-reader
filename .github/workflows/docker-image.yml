@@ -8,7 +8,7 @@ env:
   DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
   GHCR_USERNAME: ${{ github.repository_owner }}
   GHCR_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-  DOCKER_IMG_NAME: "lcyan/rss-reader"
+  DOCKER_IMG_NAME: "yanleichang/rss-reader"
   GHC_IMG_NAME: "ghcr.io/lcyan/rss-reader"
 
 jobs:
