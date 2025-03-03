@@ -1,8 +1,8 @@
 package utils
 
 import (
+	"github.com/dlclark/regexp2"
 	"log"
-	"regexp"
 	"rss-reader/globals"
 	"strings"
 )
@@ -19,13 +19,14 @@ func MatchStr(str string, matchList []string) bool {
 	strFinal := strings.TrimSpace(str)
 	for _, pattern := range matchList {
 		pattern = "(?i:" + pattern + ")"
-		re, err := regexp.Compile(pattern)
+		re, err := regexp2.Compile(pattern, 0)
 		if err != nil {
 			log.Printf("⚠️ Invalid regular expression: %s, error: %v", pattern, err)
 			continue
 		}
 
-		if re.MatchString(strFinal) {
+		isMatch, _ := re.MatchString(strFinal)
+		if isMatch {
 			return true
 		}
 	}

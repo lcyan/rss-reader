@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"github.com/imroc/req/v3"
 	"log"
 	"rss-reader/globals"
 	"rss-reader/models"
@@ -28,7 +29,7 @@ func UpdateFeeds() {
 
 func UpdateFeed(url, formattedTime string) {
 	log.Printf("timer exec get: %s\n", url)
-	result, err := globals.Fp.ParseURL(url)
+	result, err := loadRssData(url)
 	if err != nil {
 		log.Printf("Error fetching feed: %v | %v", url, err)
 		return
@@ -57,6 +58,17 @@ func UpdateFeed(url, formattedTime string) {
 	globals.Lock.Lock()
 	defer globals.Lock.Unlock()
 	globals.DbMap[url] = customFeed
+}
+
+func loadRssData(url string) (*gofeed.Feed, error) {
+	fp := gofeed.NewParser()
+	reqClient := req.C().ImpersonateChrome()
+	resp, err := reqClient.R().Get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	return fp.ParseString(resp.String())
 }
 
 // GetFeeds 获取feeds列表
