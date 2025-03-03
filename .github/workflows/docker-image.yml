@@ -25,6 +25,7 @@ jobs:
       - name: GetTargetVersion
         id: getTargetVersion
         run: |
+          echo "${{ github.ref }}"
           targetVersion=$(echo "${{ github.ref }}" | sed 's/refs\/tags\///g')
           echo "TargetVersion: $targetVersion"
           echo "TargetVersion=$targetVersion" >> $GITHUB_OUTPUT
