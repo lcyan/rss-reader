@@ -21,6 +21,7 @@ func UpdateFeeds() {
 		formattedTime := time.Now().Format("2006-01-02 15:04:05")
 		for _, url := range globals.RssUrls.Values {
 			go UpdateFeed(url, formattedTime)
+			time.Sleep(3 * time.Second)
 		}
 		<-tick
 	}
