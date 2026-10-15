@@ -23,6 +23,7 @@ func init() {
 func main() {
 	go utils.UpdateFeeds()
 	go utils.WatchConfigFileChanges("config.json")
+	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/feeds", getFeedsHandler)
 	http.HandleFunc("/ws", wsHandler)
 	// http.HandleFunc("/", serveHome)
@@ -32,6 +33,11 @@ func main() {
 	fs := http.FileServer(http.FS(globals.DirStatic))
 	http.Handle("/static/", fs)
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("ok"))
 }
 
 func serveHome(w http.ResponseWriter, r *http.Request) {
