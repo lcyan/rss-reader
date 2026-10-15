@@ -1,10 +1,16 @@
 services:
   server:
-    image: ${RSS_READER_IMAGE:-yanleichang/rss-reader}:${RSS_READER_VERSION:-latest}
+    image: ghcr.io/lcyan/rss-reader:latest
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "--timeout=5", "http://127.0.0.1:8080/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     container_name: rss-reader
     restart: unless-stopped
     ports:
-      - "9898:8080"
+      - "127.0.0.1:9898:8080"
     volumes:
-      - "${PWD}/config.json:/app/config.json:ro"
-      - "${PWD}/archives.txt:/app/archives.txt"
+      - ./data/config.json:/app/config.json
+      - ./data/archives.txt:/app/archives.txt

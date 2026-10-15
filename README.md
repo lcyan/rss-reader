@@ -84,13 +84,46 @@ nightEndTime | 日间结束时间，如 19:30:00
 
 环境要求：Git、Docker、Docker-Compose
 
-一键脚本：
+### 1. 克隆仓库
 
 ```bash
-git clone https://github.com/RayWangQvQ/rss-reader && cd rss-reader && docker-compose up -d || docker compose up -d
+git clone https://github.com/lcyan/rss-reader && cd rss-reader
 ```
 
-部署成功后，通过ip+端口号访问
+### 2. 准备 data 目录
+
+容器以非 root 用户（uid 1000）运行，需要提前创建 `data` 目录并设置权限：
+
+```bash
+mkdir -p data
+cp config.json data/config.json
+touch data/archives.txt
+chown -R 1000:1000 data
+```
+
+> **说明**：`config.json` 为配置文件，`archives.txt` 用于记录已推送通知的文章链接（需可写）。
+
+### 3. 修改配置
+
+编辑 `data/config.json`，按需修改 RSS 订阅源、关键词、通知方式等，详见上方 [配置文件](#配置文件) 章节。
+
+### 4. 启动服务
+
+```bash
+docker compose up -d
+```
+
+### 5. 验证
+
+```bash
+# 查看容器状态
+docker compose ps
+
+# 查看日志
+docker compose logs -f
+```
+
+部署成功后，通过 `http://<服务器IP>:9898` 访问
 
 # nginx反代
 
