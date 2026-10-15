@@ -17,7 +17,7 @@ RUN apk add --no-cache tzdata \
     && mkdir -p /app \
     && chown -R app:app /app
 
-COPY --from=builder /src/bin /app/rss-reader
+COPY --chown=app:app --from=builder /src/bin/rss-reader /app/rss-reader
 
 WORKDIR /app
 

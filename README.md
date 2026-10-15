@@ -20,7 +20,7 @@
 
 - ***在原作者基础上，进行二次开发，增加了识别关键词后，推送通知到飞书和Telegram（2024年6月2日）*** ***注意⚠：docker-compose.yml 中端口默认是9898***
 
-- ***在e二次开发基础上，进行三次开发，使配置的关键字支持正则表达式，优化了性能，并添加了黑名单功能，可以指定排除指定关键字
+- ***在二次开发基础上，进行三次开发，使配置的关键字支持正则表达式，优化了性能，并添加了黑名单功能，可以指定排除指定关键字***
 
   
 2023年7月28日，进行了界面改版和升级
@@ -35,7 +35,7 @@
 
 部署前请先配置，配置都在 config.json 中修改，使用前请先去 config.json 中增加自己飞书机器人的webhook地址 或 Telegram 的 token 和 chat_id，注意⚠️ TG api 后面的地址不要改！ https://api.telegram.org/bot${token}/sendMessage ，也就是这个${token}保持原样别动
 
-config.json 中的 refresh 单位为分钟，表示多少分钟请求一次所需的 rss 订阅源
+config.json 中的 refresh 单位为秒，表示多少秒请求一次所需的 rss 订阅源
 
 TG机器人创建和权限赋予教程请看 https://www.telegramhcn.com/article/161.html
 
@@ -56,6 +56,9 @@ TG机器人创建和权限赋予教程请看 https://www.telegramhcn.com/article
     "nightEndTime": "19:30:00",
 
     "keywords": ["cc","cloudcone","rn","racknerd","咸鱼","4837","jpp","hk2p"],
+    "denyKeywords":[
+        "^这是排除关键字"
+    ],
     "notify" : {
         "feishu": {
             "api": ""
@@ -73,10 +76,14 @@ TG机器人创建和权限赋予教程请看 https://www.telegramhcn.com/article
 名称 | 说明
 -|-
 values | rss订阅链接（必填）
-refresh | rss订阅更新时间间隔，单位分钟（必填）
+refresh | rss订阅更新时间间隔，单位秒（必填）
 autoUpdatePush | 自动刷新间隔，默认为0，不开启。效果为前端每autoUpdatePush分钟自动更新页面信息，单位分钟（非必填）
 nightStartTime | 日间开始时间 ，如 06:30:00
 nightEndTime | 日间结束时间，如 19:30:00
+keywords | 关键词列表，支持正则表达式，匹配后推送通知（非必填）
+denyKeywords | 排除关键词/黑名单，支持正则表达式，匹配后不推送（非必填）
+notify | 通知配置，支持飞书 webhook 和 Telegram bot（非必填）
+archives | 已推送文章记录归档文件路径，默认 archives.txt（必填）
 
 # 使用方式
 
@@ -123,7 +130,7 @@ docker compose ps
 docker compose logs -f
 ```
 
-部署成功后，通过 `http://<服务器IP>:9898` 访问
+部署成功后，端口默认绑定 `127.0.0.1:9898`（仅本机可访问），需配合下方 nginx 反代通过域名访问。如需直接通过 IP 访问，可将 docker-compose.yml 中端口改为 `"9898:8080"`
 
 # nginx反代
 

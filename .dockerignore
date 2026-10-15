@@ -9,4 +9,6 @@ config.json
 current_version.md
 README.md
 docker-compose.yml
+data/
+bin/
 Dockerfile
