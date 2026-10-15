@@ -1,12 +1,10 @@
-version: "3"
-
 services:
   server:
-    image: zai7lou/rss-reader:latest
+    image: ${RSS_READER_IMAGE:-yanleichang/rss-reader}:${RSS_READER_VERSION:-latest}
     container_name: rss-reader
     restart: unless-stopped
     ports:
       - "9898:8080"
     volumes:
-      - "$PWD/config.json:/app/config.json"
-      - "$PWD/archives.txt:/app/archives.txt"
+      - "${PWD}/config.json:/app/config.json:ro"
+      - "${PWD}/archives.txt:/app/archives.txt"

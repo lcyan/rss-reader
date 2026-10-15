@@ -14,6 +14,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var websocketWriteTimeout = 10 * time.Second
+
 func init() {
 	globals.Init()
 }
@@ -53,14 +55,8 @@ func tplHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//判断现在是否是夜间
-	formattedTime := time.Now().Format("15:04:05")
-	darkMode := false
-	if globals.RssUrls.NightStartTime != "" && globals.RssUrls.NightEndTime != "" {
-		if globals.RssUrls.NightStartTime > formattedTime || formattedTime > globals.RssUrls.NightEndTime {
-			darkMode = true
-		}
-	}
+	config := globals.GetConfig()
+	darkMode := isDarkMode(time.Now(), config.NightStartTime, config.NightEndTime)
 
 	// 定义一个数据对象
 	data := struct {
@@ -72,7 +68,7 @@ func tplHandler(w http.ResponseWriter, r *http.Request) {
 		Keywords:       getKeywords(),
 		RssDataList:    utils.GetFeeds(),
 		DarkMode:       darkMode,
-		AutoUpdatePush: globals.RssUrls.AutoUpdatePush,
+		AutoUpdatePush: config.AutoUpdatePush,
 	}
 
 	// 渲染模板并将结果写入响应
@@ -80,6 +76,24 @@ func tplHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println("模板渲染错误:", err)
 	}
+}
+
+func isDarkMode(now time.Time, start, end string) bool {
+	formattedTime := now.Format("15:04:05")
+	if start == "" || end == "" {
+		return false
+	}
+	if start > end {
+		return formattedTime >= start || formattedTime < end
+	}
+	return start > formattedTime || formattedTime > end
+}
+
+func autoUpdatePushDuration(interval int) (time.Duration, bool) {
+	if interval <= 0 {
+		return 0, false
+	}
+	return time.Duration(interval) * time.Minute, true
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +105,8 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer conn.Close()
 	for {
-		for _, url := range globals.RssUrls.Values {
+		config := globals.GetConfig()
+		for _, url := range config.Values {
 			globals.Lock.RLock()
 			cache, ok := globals.DbMap[url]
 			globals.Lock.RUnlock()
@@ -105,7 +120,7 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			err = conn.WriteMessage(websocket.TextMessage, data)
+			err = writeWebSocketMessage(conn, websocket.TextMessage, data)
 			//错误直接关闭更新
 			if err != nil {
 				log.Printf("Error sending message or Connection closed: %v", err)
@@ -113,18 +128,27 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		//如果未配置则不自动更新
-		if globals.RssUrls.AutoUpdatePush == 0 {
+		pushInterval, enabled := autoUpdatePushDuration(config.AutoUpdatePush)
+		if !enabled {
 			return
 		}
-		time.Sleep(time.Duration(globals.RssUrls.AutoUpdatePush) * time.Minute)
+		time.Sleep(pushInterval)
 	}
 }
 
-//获取关键词也就是title
-//获取feeds列表
+func writeWebSocketMessage(conn *websocket.Conn, messageType int, data []byte) error {
+	if err := conn.SetWriteDeadline(time.Now().Add(websocketWriteTimeout)); err != nil {
+		return err
+	}
+	return conn.WriteMessage(messageType, data)
+}
+
+// 获取关键词也就是title
+// 获取feeds列表
 func getKeywords() string {
 	words := ""
-	for _, url := range globals.RssUrls.Values {
+	config := globals.GetConfig()
+	for _, url := range config.Values {
 		globals.Lock.RLock()
 		cache, ok := globals.DbMap[url]
 		globals.Lock.RUnlock()

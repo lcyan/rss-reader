@@ -1,25 +1,32 @@
 FROM golang:1.24.0-alpine3.21 AS builder
 
-COPY . /src
 WORKDIR /src
 
-#国内服务器可以取消以下注释
-#RUN go env -w GO111MODULE=on && \
-#    go env -w GOPROXY=https://goproxy.cn,direct
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
 
 RUN go build -ldflags "-s -w" -o ./bin/ .
 
-FROM alpine
+FROM alpine:3.21
 
-COPY --from=builder /src/bin /app
-COPY --from=builder /src/config.json /app/config.json
+RUN apk add --no-cache tzdata \
+    && addgroup -S app \
+    && adduser -S -u 1000 -G app app \
+    && mkdir -p /app \
+    && chown -R app:app /app
+
+COPY --from=builder /src/bin /app/rss-reader
 
 WORKDIR /app
 
 EXPOSE 8080
 
-# 设置时区
-RUN apk add --no-cache tzdata
 ENV TZ=Asia/Shanghai
+USER app
 
-ENTRYPOINT ["./rss-reader"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1
+
+ENTRYPOINT ["/app/rss-reader"]

@@ -2,33 +2,66 @@ package utils
 
 import (
 	"fmt"
-	"github.com/imroc/req/v3"
+	"io"
 	"log"
+	"net/http"
+	"os"
+	"path/filepath"
 	"rss-reader/globals"
 	"rss-reader/models"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/imroc/req/v3"
 
 	"github.com/mmcdole/gofeed"
 
 	"github.com/fsnotify/fsnotify"
 )
 
+var rssRequestTimeout = 30 * time.Second
+var rssMaxResponseBodySize int64 = 4 << 20
+var activeFeedUpdates sync.Map
+
 func UpdateFeeds() {
-	var (
-		tick = time.Tick(time.Duration(globals.RssUrls.ReFresh) * time.Second)
-	)
+	updateFeeds(func(duration time.Duration) bool {
+		time.Sleep(duration)
+		return true
+	})
+}
+
+func updateFeeds(wait func(time.Duration) bool) {
 	for {
-		formattedTime := time.Now().Format("2006-01-02 15:04:05")
-		for _, url := range globals.RssUrls.Values {
-			go UpdateFeed(url, formattedTime)
-			time.Sleep(3 * time.Second)
+		config := globals.GetConfig()
+		refresh, err := refreshDuration(config.ReFresh)
+		if err != nil {
+			log.Printf("invalid refresh interval: %v", err)
+			return
 		}
-		<-tick
+		formattedTime := time.Now().Format("2006-01-02 15:04:05")
+		for _, url := range config.Values {
+			go UpdateFeed(url, formattedTime)
+		}
+		if !wait(refresh) {
+			return
+		}
 	}
 }
 
+func refreshDuration(refresh int) (time.Duration, error) {
+	if refresh <= 0 {
+		return 0, fmt.Errorf("refresh must be greater than zero")
+	}
+	return time.Duration(refresh) * time.Second, nil
+}
+
 func UpdateFeed(url, formattedTime string) {
+	if !claimFeedUpdate(url) {
+		return
+	}
+	defer activeFeedUpdates.Delete(url)
+
 	log.Printf("timer exec get: %s\n", url)
 	result, err := loadRssData(url)
 	if err != nil {
@@ -36,10 +69,10 @@ func UpdateFeed(url, formattedTime string) {
 		return
 	}
 	//feed内容无更新时无需更新缓存
-	if cache, ok := globals.DbMap[url]; ok &&
-		len(result.Items) > 0 &&
-		len(cache.Items) > 0 &&
-		result.Items[0].Link == cache.Items[0].Link {
+	globals.Lock.RLock()
+	cache, cacheOk := globals.DbMap[url]
+	globals.Lock.RUnlock()
+	if cacheOk && feedUnchanged(cache, result) {
 		return
 	}
 	customFeed := models.Feed{
@@ -61,21 +94,60 @@ func UpdateFeed(url, formattedTime string) {
 	globals.DbMap[url] = customFeed
 }
 
+func claimFeedUpdate(url string) bool {
+	_, loaded := activeFeedUpdates.LoadOrStore(url, struct{}{})
+	return !loaded
+}
+
+func feedUnchanged(cache models.Feed, result *gofeed.Feed) bool {
+	if len(cache.Items) != len(result.Items) {
+		return false
+	}
+	for i, item := range result.Items {
+		if item == nil {
+			return false
+		}
+		cached := cache.Items[i]
+		if cached.Link != item.Link || cached.Title != item.Title || cached.Description != item.Description {
+			return false
+		}
+	}
+	return true
+}
+
 func loadRssData(url string) (*gofeed.Feed, error) {
 	fp := gofeed.NewParser()
-	reqClient := req.C().ImpersonateChrome()
-	resp, err := reqClient.R().Get(url)
+	reqClient := req.C().ImpersonateChrome().SetTimeout(rssRequestTimeout)
+	request, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
+	request.Header.Set("User-Agent", "Mozilla/5.0")
+	resp, err := reqClient.GetClient().Do(request)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("RSS request returned %s", resp.Status)
+	}
 
-	return fp.ParseString(resp.String())
+	body, err := io.ReadAll(io.LimitReader(resp.Body, rssMaxResponseBodySize+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > rssMaxResponseBodySize {
+		return nil, fmt.Errorf("RSS response exceeds %d bytes", rssMaxResponseBodySize)
+	}
+
+	return fp.ParseString(string(body))
 }
 
 // GetFeeds 获取feeds列表
 func GetFeeds() []models.Feed {
-	feeds := make([]models.Feed, 0, len(globals.RssUrls.Values))
-	for _, url := range globals.RssUrls.Values {
+	config := globals.GetConfig()
+	feeds := make([]models.Feed, 0, len(config.Values))
+	for _, url := range config.Values {
 		globals.Lock.RLock()
 		cache, ok := globals.DbMap[url]
 		globals.Lock.RUnlock()
@@ -90,16 +162,22 @@ func GetFeeds() []models.Feed {
 }
 
 func WatchConfigFileChanges(filePath string) {
+	targetPath, err := filepath.Abs(filePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	targetPath = filepath.Clean(targetPath)
+
 	// 创建一个新的监控器
 	watcher, err := fsnotify.NewWatcher()
-	if (err != nil) {
+	if err != nil {
 		log.Fatal(err)
 	}
 	defer watcher.Close()
 
 	// 添加要监控的文件
-	err = watcher.Add(filePath)
-	if (err != nil) {
+	err = watcher.Add(filepath.Dir(targetPath))
+	if err != nil {
 		log.Fatal(err)
 	}
 
@@ -113,11 +191,15 @@ func WatchConfigFileChanges(filePath string) {
 					log.Println("通道关闭1")
 					return
 				}
-				if event.Op&fsnotify.Write == fsnotify.Write {
+				eventPath, err := filepath.Abs(event.Name)
+				if err != nil || filepath.Clean(eventPath) != targetPath || !shouldReloadConfig(event) {
+					continue
+				}
+				if _, err := os.Stat(targetPath); err == nil {
 					log.Println("文件已修改")
 					globals.Init()
 					formattedTime := time.Now().Format("2006-01-02 15:04:05")
-					for _, url := range globals.RssUrls.Values {
+					for _, url := range globals.GetConfig().Values {
 						go UpdateFeed(url, formattedTime)
 					}
 				}
@@ -135,9 +217,15 @@ func WatchConfigFileChanges(filePath string) {
 	select {}
 }
 
+func shouldReloadConfig(event fsnotify.Event) bool {
+	return event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0
+}
+
 func Check(url string, result *gofeed.Feed, v *gofeed.Item) {
+	globals.Lock.RLock()
 	cache, cacheOk := globals.DbMap[url]
-	if !cacheOk || cache.Items[0].Link != result.Items[0].Link {
+	globals.Lock.RUnlock()
+	if shouldNotifyItem(cache, cacheOk, v) {
 
 		link := v.Link
 		link = strings.TrimSpace(link)
@@ -158,8 +246,7 @@ func Check(url string, result *gofeed.Feed, v *gofeed.Item) {
 			}
 		}
 
-		_, fileCacheOk := globals.Hash[link]
-		if fileCacheOk {
+		if globals.HasArchived(link) {
 			return
 		}
 
@@ -175,18 +262,63 @@ func Check(url string, result *gofeed.Feed, v *gofeed.Item) {
 	}
 }
 
+func shouldNotifyItem(cache models.Feed, cacheOk bool, item *gofeed.Item) bool {
+	if !cacheOk || item == nil {
+		return !cacheOk
+	}
+	for _, cached := range cache.Items {
+		if cached.Link == item.Link {
+			return false
+		}
+	}
+	return true
+}
+
 func TryNotify(msg string, link string) {
-	fileCacheOk := false
-	_, fileCacheOk = globals.Hash[link]
-	if fileCacheOk {
+	if !globals.ClaimNotification(link) {
 		return
-	} else {
-		globals.Hash[link] = 1
-		// 发送通知
-		go Notify(Message{
-			Routes:  []string{FeiShuRoute, TelegramRoute},
-			Content: fmt.Sprintf("%s\n%s", msg, link),
-		})
-		globals.WriteFile(globals.RssUrls.Archives, link)
+	}
+
+	routes := []string{FeiShuRoute, TelegramRoute}
+	notificationProgress.Lock()
+	completed := notificationProgress.completed[link]
+	pendingRoutes := make([]string, 0, len(routes))
+	for _, route := range routes {
+		if _, ok := completed[route]; !ok {
+			pendingRoutes = append(pendingRoutes, route)
+		}
+	}
+	notificationProgress.Unlock()
+
+	err := notifyRoutes(Message{
+		Routes:  pendingRoutes,
+		Content: fmt.Sprintf("%s\n%s", msg, link),
+	}, pendingRoutes, func(route string) {
+		notificationProgress.Lock()
+		if notificationProgress.completed[link] == nil {
+			notificationProgress.completed[link] = make(map[string]struct{})
+		}
+		notificationProgress.completed[link][route] = struct{}{}
+		notificationProgress.Unlock()
+	})
+	if err != nil {
+		globals.FinishNotification(link, false)
+		log.Printf("notification failed for %s: %v", link, err)
+		return
+	}
+
+	if err := globals.WriteFile(globals.GetConfig().Archives, link); err != nil {
+		globals.FinishNotification(link, false)
+		notificationProgress.Lock()
+		delete(notificationProgress.completed, link)
+		notificationProgress.Unlock()
+		log.Printf("archive write failed for %s: %v", link, err)
+		return
+	}
+
+	if globals.FinishNotification(link, true) {
+		notificationProgress.Lock()
+		delete(notificationProgress.completed, link)
+		notificationProgress.Unlock()
 	}
 }

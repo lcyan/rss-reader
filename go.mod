@@ -3,8 +3,8 @@ module rss-reader
 go 1.24.0
 
 require (
-	github.com/dlclark/regexp2 v1.11.5
-	github.com/fsnotify/fsnotify v1.8.0
+	github.com/dlclark/regexp2 v1.12.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/imroc/req/v3 v3.49.1
 	github.com/mmcdole/gofeed v1.3.0

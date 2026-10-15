@@ -8,11 +8,13 @@ import (
 )
 
 func MatchAllowList(str string) bool {
-	return MatchStr(str, globals.MatchList)
+	matchList, _ := globals.GetMatchLists()
+	return MatchStr(str, matchList)
 }
 
 func MatchDenyList(str string) bool {
-	return MatchStr(str, globals.DenyMatchList)
+	_, denyMatchList := globals.GetMatchLists()
+	return MatchStr(str, denyMatchList)
 }
 
 func MatchStr(str string, matchList []string) bool {

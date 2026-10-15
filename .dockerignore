@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+.vscode
+archives.txt
+config.json
+*.png
+*_test.go
+current_version.md
+README.md
+docker-compose.yml
+Dockerfile
